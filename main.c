@@ -2,6 +2,34 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+static void handle_binary(unsigned int num, int *count)
+{
+    char buffer[32]; // Holds binary digits (up to 32 bits)
+    int i = 0;
+    int j;
+
+    if (num == 0)
+    {
+        write(1, "0", 1);
+        (*count)++;
+        return;
+    }
+
+    // Extract binary digits (LSB to MSB)
+    while (num > 0)
+    {
+        buffer[i++] = '0' + (num % 2);
+        num /= 2;
+    }
+
+    // Write digits in reverse (MSB to LSB)
+    for (j = i - 1; j >= 0; j--)
+    {
+        write(1, &buffer[j], 1);
+        (*count)++;
+    }
+}
+
 static void handle_int(int num, int *count)
 {
     char buffer[12];
@@ -56,6 +84,7 @@ int _printf(const char *format, ...)
     char *s;
     char c;
     int num;
+    unsigned int num_bin;
 
     va_start(args, format);
 
@@ -85,6 +114,10 @@ int _printf(const char *format, ...)
             case 'i':
                 num = va_arg(args, int);
                 handle_int(num, &count);
+                break;
+            case 'b':
+                num_bin = va_arg(args, unsigned int);
+                handle_binary(num_bin, &count);
                 break;
             case '%':
                 write(1, "%", 1);
@@ -119,5 +152,8 @@ int main(void)
     _printf("Decimal: %d\n", 123);
     _printf("Negative: %i\n", -456);
     _printf("Zero: %d\n", 0);
+    _printf("98 in binary: %b\n", 98);
+    _printf("Zero: %b\n", 0);
+    _printf("One: %b\n", 1);
     return 0;
 }
