@@ -2,6 +2,34 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+static void handle_unsigned(unsigned int num, int base, int uppercase, int *count)
+{
+    char buffer[32];
+    int i = 0;
+    int j = 0;
+    const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
+
+    if (num == 0)
+    {
+        write(1, "0", 1);
+        (*count)++;
+        return;
+    }
+
+    while (num > 0)
+    {
+        buffer[i++] = digits[num % base];
+        num /= base;
+    }
+
+    // Write digits in reverse order (MSB to LSB)
+    for (j = i - 1; j >= 0; j--)
+    {
+        write(1, &buffer[j], 1);
+        (*count)++;
+    }
+}
+
 static void handle_binary(unsigned int num, int *count)
 {
     char buffer[32]; // Holds binary digits (up to 32 bits)
@@ -84,7 +112,7 @@ int _printf(const char *format, ...)
     char *s;
     char c;
     int num;
-    unsigned int num_bin;
+    unsigned int num_unsigned;
 
     va_start(args, format);
 
@@ -116,8 +144,24 @@ int _printf(const char *format, ...)
                 handle_int(num, &count);
                 break;
             case 'b':
-                num_bin = va_arg(args, unsigned int);
-                handle_binary(num_bin, &count);
+                num_unsigned = va_arg(args, unsigned int);
+                handle_binary(num_unsigned, &count);
+                break;
+            case 'u':
+                num_unsigned = va_arg(args, unsigned int);
+                handle_unsigned(num_unsigned, 10, 0, &count);
+                break;
+            case 'o':
+                num_unsigned = va_arg(args, unsigned int);
+                handle_unsigned(num_unsigned, 8, 0, &count);
+                break;
+            case 'x':
+                num_unsigned = va_arg(args, unsigned int);
+                handle_unsigned(num_unsigned, 16, 0, &count);
+                break;
+            case 'X':
+                num_unsigned = va_arg(args, unsigned int);
+                handle_unsigned(num_unsigned, 16, 1, &count);
                 break;
             case '%':
                 write(1, "%", 1);
@@ -155,5 +199,10 @@ int main(void)
     _printf("98 in binary: %b\n", 98);
     _printf("Zero: %b\n", 0);
     _printf("One: %b\n", 1);
+    _printf("Unsigned: %u\n", 123456);
+    _printf("Octal: %o\n", 64);
+    _printf("Hex (lower): %x\n", 255);
+    _printf("Hex (upper): %X\n", 255);
+    _printf("Zero (hex): %x\n", 0);
     return 0;
 }
