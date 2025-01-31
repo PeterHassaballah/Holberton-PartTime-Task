@@ -1,0 +1,32 @@
+.TH _PRINTF 3 "January 2025" "Custom printf"
+.SH NAME
+_printf \- formatted output conversion
+.SH SYNOPSIS
+.B #include "main.h"
+.sp
+.BI "int _printf(const char *" format ", ...);"
+.SH DESCRIPTION
+.PP
+The
+.B _printf
+function produces output according to a format string. It supports the following conversion specifiers:
+.TP
+.B %c
+Print a single character.
+.TP
+.B %s
+Print a string.
+.TP
+.B %%
+Print a literal percent sign.
+.TP
+.B %d, %i
+Print a signed integer in base 10.
+.SH RETURN VALUE
+Returns the number of characters printed (excluding the null byte).
+.SH EXAMPLES
+To print "Hello, 42!":
+.sp
+.B _printf("Hello, %d!\\n", 42);
+.SH AUTHOR
+Andrew Magdy
