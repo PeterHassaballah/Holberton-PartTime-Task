@@ -27,13 +27,37 @@ static void handle_char(char c, BufferState *state)
     add_to_buffer(c, state);
 }
 
-static void handle_string(char *s, BufferState *state)
+static void add_string(const char *s, BufferState *state)
 {
-    if (!s)
-        s = "(null)";
     for (; *s; s++)
     {
         add_to_buffer(*s, state);
+    }
+}
+
+static void handle_string(char *s, BufferState *state)
+{
+
+    if (!s)
+    {
+        s = "(null)";
+    }
+
+    for (; *s; s++)
+    {
+        unsigned char c = *s;
+
+        if (c >= 32 && c < 127)
+        {
+            handle_char(c, state);
+        }
+        else
+        {
+            handle_char('\\', state);
+            handle_char('x', state);
+            handle_char("0123456789ABCDEF"[c >> 4], state);   // High nibble
+            handle_char("0123456789ABCDEF"[c & 0x0F], state); // Low nibble
+        }
     }
 }
 
@@ -97,6 +121,7 @@ int _printf(const char *format, ...)
 {
     char c;
     char *s;
+    char *S;
     int num;
     unsigned unsigned_num;
     BufferState state = {.index = 0, .total = 0};
@@ -119,9 +144,13 @@ int _printf(const char *format, ...)
             case 's':
             {
                 s = va_arg(args, char *);
-                handle_string(s, &state);
+                add_string(s, &state);
                 break;
             }
+            case 'S':
+                S = va_arg(args, char *);
+                handle_string(S, &state);
+                break;
             case 'd':
             case 'i':
             {
@@ -171,7 +200,6 @@ int _printf(const char *format, ...)
                 break;
             }
             }
-            // format++;
         }
         else
         {
@@ -202,5 +230,7 @@ int main(void)
     _printf("Hex (lower): %x\n", 255);
     _printf("Hex (upper): %X\n", 255);
     _printf("Zero (hex): %x\n", 0);
+    _printf("%S\n", "Best\nSchool");
+    _printf("%S\n", "Hello\tthere");
     return 0;
 }
