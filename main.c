@@ -122,8 +122,8 @@ int _printf(const char *format, ...)
     char c;
     char *s;
     char *S;
-    int num;
     unsigned unsigned_num;
+    char length = 0;
     BufferState state = {.index = 0, .total = 0};
     va_list args;
     va_start(args, format);
@@ -133,6 +133,13 @@ int _printf(const char *format, ...)
         if (*format == '%')
         {
             format++;
+
+            if (*format == 'h' || *format == 'l')
+            {
+                length = *format;
+                format++;
+            }
+
             switch (*format)
             {
             case 'c':
@@ -154,8 +161,21 @@ int _printf(const char *format, ...)
             case 'd':
             case 'i':
             {
-                num = va_arg(args, int);
-                handle_int(num, &state);
+                if (length == 'l')
+                {
+                    long num = va_arg(args, long);
+                    handle_int(num, &state);
+                }
+                else if (length == 'h')
+                {
+                    short num = (short)va_arg(args, int);
+                    handle_int(num, &state);
+                }
+                else
+                {
+                    int num = va_arg(args, int);
+                    handle_int(num, &state);
+                }
                 break;
             }
             case 'b':
@@ -166,26 +186,80 @@ int _printf(const char *format, ...)
             }
             case 'u':
             {
-                unsigned_num = va_arg(args, unsigned int);
-                handle_unsigned(unsigned_num, 10, 0, &state);
+                if (length == 'l')
+                {
+                    unsigned long num = va_arg(args, unsigned long);
+                    handle_unsigned(num, 10, 0, &state);
+                }
+                else if (length == 'h')
+                {
+                    unsigned short num = (unsigned short)va_arg(args, unsigned int);
+                    handle_unsigned(num, 10, 0, &state);
+                }
+                else
+                {
+                    unsigned int num = va_arg(args, unsigned int);
+                    handle_unsigned(num, 10, 0, &state);
+                }
+                break;
+
                 break;
             }
             case 'o':
             {
-                unsigned_num = va_arg(args, unsigned int);
-                handle_unsigned(unsigned_num, 8, 0, &state);
+                if (length == 'l')
+                {
+                    unsigned long num = va_arg(args, unsigned long);
+                    handle_unsigned(num, 8, 0, &state);
+                }
+                else if (length == 'h')
+                {
+                    unsigned short num = (unsigned short)va_arg(args, unsigned int);
+                    handle_unsigned(num, 8, 0, &state);
+                }
+                else
+                {
+                    unsigned int num = va_arg(args, unsigned int);
+                    handle_unsigned(num, 8, 0, &state);
+                }
                 break;
             }
             case 'x':
             {
-                unsigned_num = va_arg(args, unsigned int);
-                handle_unsigned(unsigned_num, 16, 0, &state);
+                if (length == 'l')
+                {
+                    unsigned long num = va_arg(args, unsigned long);
+                    handle_unsigned(num, 16, 0, &state);
+                }
+                else if (length == 'h')
+                {
+                    unsigned short num = (unsigned short)va_arg(args, unsigned int);
+                    handle_unsigned(num, 16, 0, &state);
+                }
+                else
+                {
+                    unsigned int num = va_arg(args, unsigned int);
+                    handle_unsigned(num, 16, 0, &state);
+                }
                 break;
             }
             case 'X':
             {
-                unsigned_num = va_arg(args, unsigned int);
-                handle_unsigned(unsigned_num, 16, 1, &state);
+                if (length == 'l')
+                {
+                    unsigned long num = va_arg(args, unsigned long);
+                    handle_unsigned(num, 16, 1, &state);
+                }
+                else if (length == 'h')
+                {
+                    unsigned short num = (unsigned short)va_arg(args, unsigned int);
+                    handle_unsigned(num, 16, 1, &state);
+                }
+                else
+                {
+                    unsigned int num = va_arg(args, unsigned int);
+                    handle_unsigned(num, 16, 1, &state);
+                }
                 break;
             }
             case '%':
@@ -232,5 +306,9 @@ int main(void)
     _printf("Zero (hex): %x\n", 0);
     _printf("%S\n", "Best\nSchool");
     _printf("%S\n", "Hello\tthere");
+    _printf("Long: %ld\n", 123456789L);                      // Output: 123456789
+    _printf("Short: %hd\n", (short)-123);                    // Output: -123
+    _printf("Unsigned long: %lu\n", 4294967295UL);           // Output: 4294967295
+    _printf("Unsigned short: %hu\n", (unsigned short)65535); // Output: 65535
     return 0;
 }
