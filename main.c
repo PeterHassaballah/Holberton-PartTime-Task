@@ -40,9 +40,10 @@ static void handle_char(char c, int width, BufferState *state)
     add_to_buffer(c, state);
 }
 
-static void add_string(const char *s, int width, BufferState *state)
+static void add_string(const char *s, int width, int precision, BufferState *state)
 {
     int len = 0;
+    int i = 0;
 
     if (!s)
     {
@@ -51,39 +52,47 @@ static void add_string(const char *s, int width, BufferState *state)
 
     len = strlen(s);
 
+    if (precision != -1 && precision < len)
+        len = precision;
+
     add_padding(width, len, state);
-    for (; *s; s++)
+    for (i = 0; i < len; i++)
     {
-        add_to_buffer(*s, state);
+        add_to_buffer(s[i], state);
     }
 }
 
-static void handle_string(char *s, int width, BufferState *state)
+static void handle_string(char *s, int width, int precision, BufferState *state)
 {
-    int len = 0;
+    int input_len = 0;
+    int output_len = 0;
     char *p;
+    int max_chars;
 
     if (!s)
     {
         s = "(null)";
     }
-    len = 0;
 
-    // Calculate effective length
-    for (p = s; *p; p++)
+    input_len = strlen(s);
+
+    max_chars = (precision != -1) ? precision : input_len;
+
+    for (p = s; *p && max_chars > 0; p++, max_chars--)
     {
-        if (*p < 32 || *p >= 127)
-            len += 4;
+        unsigned char c = *p;
+        if (c < 32 || c >= 127)
+            output_len += 4;
         else
-            len += 1;
+            output_len += 1;
     }
 
-    add_padding(width, len, state);
+    add_padding(width, output_len, state);
 
-    for (; *s; s++)
+    max_chars = (precision != -1) ? precision : input_len;
+    for (p = s; *p && max_chars > 0; p++, max_chars--)
     {
-        unsigned char c = *s;
-
+        unsigned char c = *p;
         if (c >= 32 && c < 127)
         {
             handle_char(c, 1, state);
@@ -92,24 +101,33 @@ static void handle_string(char *s, int width, BufferState *state)
         {
             handle_char('\\', 1, state);
             handle_char('x', 1, state);
-            handle_char("0123456789ABCDEF"[c >> 4], 1, state);   // High nibble
-            handle_char("0123456789ABCDEF"[c & 0x0F], 1, state); // Low nibble
+            handle_char("0123456789ABCDEF"[c >> 4], 1, state);
+            handle_char("0123456789ABCDEF"[c & 0x0F], 1, state);
         }
     }
 }
 
-static void handle_int(int num, int width, BufferState *state)
+static void handle_int(int num, int width, int precision, BufferState *state)
 {
     char num_str[20];
     int is_neg = num < 0;
     int i = 0;
     int j = 0;
     int num_len = 0;
+    int leading_zeros = 0;
     int total_len = 0;
 
     if (num == 0)
     {
-        num_str[i++] = '0';
+        if (precision == 0)
+        {
+            num_len = 0;
+        }
+        else
+        {
+            num_str[i++] = '0';
+            num_len = 1;
+        }
     }
     else
     {
@@ -119,31 +137,49 @@ static void handle_int(int num, int width, BufferState *state)
             num_str[i++] = '0' + (num % 10);
             num /= 10;
         }
+        num_len = i;
     }
 
-    num_len = i;
+    if (precision != -1)
+    {
+        leading_zeros = precision - num_len;
+        if (leading_zeros < 0)
+            leading_zeros = 0;
+        num_len += leading_zeros;
+    }
+
     total_len = num_len + (is_neg ? 1 : 0);
     add_padding(width, total_len, state);
 
     if (is_neg)
-        num_str[i++] = '-';
+        add_to_buffer('-', state);
+
+    for (j = 0; j < leading_zeros; j++)
+        add_to_buffer('0', state);
 
     for (j = i - 1; j >= 0; j--)
-    {
         add_to_buffer(num_str[j], state);
-    }
 }
 
-static void handle_unsigned(unsigned int num, int base, int uppercase, int width, BufferState *state)
+static void handle_unsigned(unsigned int num, int base, int uppercase, int width, int precision, BufferState *state)
 {
     const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
     char buffer[32];
     int i = 0;
     int j = 0;
+    int leading_zeros = 0;
+    int num_len = 0;
 
     if (num == 0)
     {
-        buffer[i++] = '0';
+        if (precision == 0)
+        {
+            i = 0;
+        }
+        else
+        {
+            buffer[i++] = '0';
+        }
     }
     else
     {
@@ -154,12 +190,23 @@ static void handle_unsigned(unsigned int num, int base, int uppercase, int width
         }
     }
 
-    add_padding(width, i, state);
+    num_len = i;
+
+    if (precision != -1)
+    {
+        leading_zeros = precision - num_len;
+        if (leading_zeros < 0)
+            leading_zeros = 0;
+        num_len += leading_zeros;
+    }
+
+    add_padding(width, num_len, state);
+
+    for (j = 0; j < leading_zeros; j++)
+        add_to_buffer('0', state);
 
     for (j = i - 1; j >= 0; j--)
-    {
         add_to_buffer(buffer[j], state);
-    }
 }
 
 int _printf(const char *format, ...)
@@ -167,9 +214,10 @@ int _printf(const char *format, ...)
     char c;
     char *s;
     char *S;
-    unsigned unsigned_num;
+    unsigned int unsigned_num;
     char length = 0;
     int width = 0;
+    int precision = -1;
     BufferState state = {.index = 0, .total = 0};
     va_list args;
     va_start(args, format);
@@ -179,6 +227,8 @@ int _printf(const char *format, ...)
         if (*format == '%')
         {
             format++;
+            width = 0;
+            precision = -1;
 
             // Parse width
             while (isdigit(*format))
@@ -187,6 +237,19 @@ int _printf(const char *format, ...)
                 format++;
             }
 
+            // Parse precision
+            if (*format == '.')
+            {
+                format++;
+                precision = 0;
+                while (isdigit(*format))
+                {
+                    precision = precision * 10 + (*format - '0');
+                    format++;
+                }
+            }
+
+            // Parse length modifier
             if (*format == 'h' || *format == 'l')
             {
                 length = *format;
@@ -196,136 +259,114 @@ int _printf(const char *format, ...)
             switch (*format)
             {
             case 'c':
-            {
                 c = va_arg(args, int);
                 handle_char(c, width, &state);
                 break;
-            }
             case 's':
-            {
                 s = va_arg(args, char *);
-                add_string(s, width, &state);
+                add_string(s, width, precision, &state);
                 break;
-            }
             case 'S':
                 S = va_arg(args, char *);
-                handle_string(S, width, &state);
+                handle_string(S, width, -1, &state); // Custom specifier: ignore precision
                 break;
             case 'd':
             case 'i':
-            {
                 if (length == 'l')
                 {
                     long num = va_arg(args, long);
-                    handle_int(num, width, &state);
+                    handle_int(num, width, precision, &state);
                 }
                 else if (length == 'h')
                 {
                     short num = (short)va_arg(args, int);
-                    handle_int(num, width, &state);
+                    handle_int(num, width, precision, &state);
                 }
                 else
                 {
                     int num = va_arg(args, int);
-                    handle_int(num, width, &state);
+                    handle_int(num, width, precision, &state);
                 }
                 break;
-            }
             case 'b':
-            {
                 unsigned_num = va_arg(args, unsigned int);
-                handle_unsigned(unsigned_num, 2, 0, width, &state);
+                handle_unsigned(unsigned_num, 2, 0, width, -1, &state); // Custom specifier: ignore precision
                 break;
-            }
             case 'u':
-            {
                 if (length == 'l')
                 {
                     unsigned long num = va_arg(args, unsigned long);
-                    handle_unsigned(num, 10, 0, width, &state);
+                    handle_unsigned(num, 10, 0, width, precision, &state);
                 }
                 else if (length == 'h')
                 {
                     unsigned short num = (unsigned short)va_arg(args, unsigned int);
-                    handle_unsigned(num, 10, 0, width, &state);
+                    handle_unsigned(num, 10, 0, width, precision, &state);
                 }
                 else
                 {
                     unsigned int num = va_arg(args, unsigned int);
-                    handle_unsigned(num, 10, 0, width, &state);
+                    handle_unsigned(num, 10, 0, width, precision, &state);
                 }
                 break;
-
-                break;
-            }
             case 'o':
-            {
                 if (length == 'l')
                 {
                     unsigned long num = va_arg(args, unsigned long);
-                    handle_unsigned(num, 8, 0, width, &state);
+                    handle_unsigned(num, 8, 0, width, precision, &state);
                 }
                 else if (length == 'h')
                 {
                     unsigned short num = (unsigned short)va_arg(args, unsigned int);
-                    handle_unsigned(num, 8, 0, width, &state);
+                    handle_unsigned(num, 8, 0, width, precision, &state);
                 }
                 else
                 {
                     unsigned int num = va_arg(args, unsigned int);
-                    handle_unsigned(num, 8, 0, width, &state);
+                    handle_unsigned(num, 8, 0, width, precision, &state);
                 }
                 break;
-            }
             case 'x':
-            {
                 if (length == 'l')
                 {
                     unsigned long num = va_arg(args, unsigned long);
-                    handle_unsigned(num, 16, 0, width, &state);
+                    handle_unsigned(num, 16, 0, width, precision, &state);
                 }
                 else if (length == 'h')
                 {
                     unsigned short num = (unsigned short)va_arg(args, unsigned int);
-                    handle_unsigned(num, 16, 0, width, &state);
+                    handle_unsigned(num, 16, 0, width, precision, &state);
                 }
                 else
                 {
                     unsigned int num = va_arg(args, unsigned int);
-                    handle_unsigned(num, 16, 0, width, &state);
+                    handle_unsigned(num, 16, 0, width, precision, &state);
                 }
                 break;
-            }
             case 'X':
-            {
                 if (length == 'l')
                 {
                     unsigned long num = va_arg(args, unsigned long);
-                    handle_unsigned(num, 16, 1, width, &state);
+                    handle_unsigned(num, 16, 1, width, precision, &state);
                 }
                 else if (length == 'h')
                 {
                     unsigned short num = (unsigned short)va_arg(args, unsigned int);
-                    handle_unsigned(num, 16, 1, width, &state);
+                    handle_unsigned(num, 16, 1, width, precision, &state);
                 }
                 else
                 {
                     unsigned int num = va_arg(args, unsigned int);
-                    handle_unsigned(num, 16, 1, width, &state);
+                    handle_unsigned(num, 16, 1, width, precision, &state);
                 }
                 break;
-            }
             case '%':
-            {
                 add_to_buffer('%', &state);
                 break;
-            }
             default:
-            {
                 add_to_buffer('%', &state);
                 add_to_buffer(*format, &state);
                 break;
-            }
             }
         }
         else
@@ -363,8 +404,9 @@ int main(void)
     _printf("Short: %hd\n", (short)-123);                    // Output: -123
     _printf("Unsigned long: %lu\n", 4294967295UL);           // Output: 4294967295
     _printf("Unsigned short: %hu\n", (unsigned short)65535); // Output: 65535
-    _printf("Width 5: |%5d|\n", 123);                        // |  123|
-    _printf("Width 10: |%10s|\n", "hello");                  // |     hello|
-    _printf("Width 6: |%6S|\n", "Hi\t");                     // |Hi\x09|
+    _printf("Width 5: |%5d|\n", 123);                        // | 123|
+    _printf("Width 10: |%10s|\n", "hello");                  // | hello|
+    _printf("Width 6: |%6S|\n", "Hi\t");
+    _printf("Precision (d): %.5d\n", 42); // 00042
     return 0;
 }
