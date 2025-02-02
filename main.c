@@ -1,18 +1,83 @@
 #include "main.h"
 #include <unistd.h>
 #include <stdarg.h>
+#include <string.h>
 
-static void handle_unsigned(unsigned int num, int base, int uppercase, int *count)
+static void flush_buffer(BufferState *state)
 {
-    char buffer[32];
+    if (state->index > 0)
+    {
+        write(1, state->buffer, state->index);
+        state->total += state->index;
+        state->index = 0;
+    }
+}
+
+static void add_to_buffer(char c, BufferState *state)
+{
+    state->buffer[state->index++] = c;
+    if (state->index == 1024)
+    {
+        flush_buffer(state);
+    }
+}
+
+static void handle_char(char c, BufferState *state)
+{
+    add_to_buffer(c, state);
+}
+
+static void handle_string(char *s, BufferState *state)
+{
+    if (!s)
+        s = "(null)";
+    for (; *s; s++)
+    {
+        add_to_buffer(*s, state);
+    }
+}
+
+static void handle_int(int num, BufferState *state)
+{
+    char num_str[12];
+    int is_neg = num < 0;
     int i = 0;
     int j = 0;
-    const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
 
     if (num == 0)
     {
-        write(1, "0", 1);
-        (*count)++;
+        add_to_buffer('0', state);
+        return;
+    }
+
+    if (is_neg)
+        num = -num;
+
+    while (num > 0)
+    {
+        num_str[i++] = '0' + (num % 10);
+        num /= 10;
+    }
+
+    if (is_neg)
+        num_str[i++] = '-';
+
+    for (j = i - 1; j >= 0; j--)
+    {
+        add_to_buffer(num_str[j], state);
+    }
+}
+
+static void handle_unsigned(unsigned int num, int base, int uppercase, BufferState *state)
+{
+    const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
+    char buffer[32];
+    int i = 0;
+    int j = 0;
+
+    if (num == 0)
+    {
+        add_to_buffer('0', state);
         return;
     }
 
@@ -22,98 +87,20 @@ static void handle_unsigned(unsigned int num, int base, int uppercase, int *coun
         num /= base;
     }
 
-    // Write digits in reverse order (MSB to LSB)
     for (j = i - 1; j >= 0; j--)
     {
-        write(1, &buffer[j], 1);
-        (*count)++;
-    }
-}
-
-static void handle_binary(unsigned int num, int *count)
-{
-    char buffer[32]; // Holds binary digits (up to 32 bits)
-    int i = 0;
-    int j;
-
-    if (num == 0)
-    {
-        write(1, "0", 1);
-        (*count)++;
-        return;
-    }
-
-    // Extract binary digits (LSB to MSB)
-    while (num > 0)
-    {
-        buffer[i++] = '0' + (num % 2);
-        num /= 2;
-    }
-
-    // Write digits in reverse (MSB to LSB)
-    for (j = i - 1; j >= 0; j--)
-    {
-        write(1, &buffer[j], 1);
-        (*count)++;
-    }
-}
-
-static void handle_int(int num, int *count)
-{
-    char buffer[12];
-    int is_negative = 0;
-    int i = 0;
-    int j = 0;
-
-    if (num == 0)
-    {
-        write(1, "0", 1);
-        (*count)++;
-        return;
-    }
-
-    if (num < 0)
-    {
-        is_negative = 1;
-        num = -num;
-    }
-
-    while (num > 0)
-    {
-        buffer[i++] = '0' + (num % 10);
-        num /= 10;
-    }
-
-    if (is_negative)
-    {
-        buffer[i++] = '-';
-    }
-
-    // Reverse the digits
-    for (j = 0; j < i / 2; j++)
-    {
-        char temp = buffer[j];
-        buffer[j] = buffer[i - j - 1];
-        buffer[i - j - 1] = temp;
-    }
-
-    // Write each character
-    for (j = 0; j < i; j++)
-    {
-        write(1, &buffer[j], 1);
-        (*count)++;
+        add_to_buffer(buffer[j], state);
     }
 }
 
 int _printf(const char *format, ...)
 {
-    va_list args;
-    int count = 0;
-    char *s;
     char c;
+    char *s;
     int num;
-    unsigned int num_unsigned;
-
+    unsigned unsigned_num;
+    BufferState state = {.index = 0, .total = 0};
+    va_list args;
     va_start(args, format);
 
     while (*format)
@@ -124,69 +111,80 @@ int _printf(const char *format, ...)
             switch (*format)
             {
             case 'c':
+            {
                 c = va_arg(args, int);
-                write(1, &c, 1);
-                count++;
-                break;
-            case 's':
-                s = va_arg(args, char *);
-                if (!s)
-                    s = "(null)";
-                for (; *s; s++)
-                {
-                    write(1, s, 1);
-                    count++;
-                }
-                break;
-            case 'd':
-            case 'i':
-                num = va_arg(args, int);
-                handle_int(num, &count);
-                break;
-            case 'b':
-                num_unsigned = va_arg(args, unsigned int);
-                handle_binary(num_unsigned, &count);
-                break;
-            case 'u':
-                num_unsigned = va_arg(args, unsigned int);
-                handle_unsigned(num_unsigned, 10, 0, &count);
-                break;
-            case 'o':
-                num_unsigned = va_arg(args, unsigned int);
-                handle_unsigned(num_unsigned, 8, 0, &count);
-                break;
-            case 'x':
-                num_unsigned = va_arg(args, unsigned int);
-                handle_unsigned(num_unsigned, 16, 0, &count);
-                break;
-            case 'X':
-                num_unsigned = va_arg(args, unsigned int);
-                handle_unsigned(num_unsigned, 16, 1, &count);
-                break;
-            case '%':
-                write(1, "%", 1);
-                count++;
-                break;
-            default:
-                write(1, "%", 1);
-                write(1, format, 1);
-                count += 2;
+                handle_char(c, &state);
                 break;
             }
+            case 's':
+            {
+                s = va_arg(args, char *);
+                handle_string(s, &state);
+                break;
+            }
+            case 'd':
+            case 'i':
+            {
+                num = va_arg(args, int);
+                handle_int(num, &state);
+                break;
+            }
+            case 'b':
+            {
+                unsigned_num = va_arg(args, unsigned int);
+                handle_unsigned(unsigned_num, 2, 0, &state);
+                break;
+            }
+            case 'u':
+            {
+                unsigned_num = va_arg(args, unsigned int);
+                handle_unsigned(unsigned_num, 10, 0, &state);
+                break;
+            }
+            case 'o':
+            {
+                unsigned_num = va_arg(args, unsigned int);
+                handle_unsigned(unsigned_num, 8, 0, &state);
+                break;
+            }
+            case 'x':
+            {
+                unsigned_num = va_arg(args, unsigned int);
+                handle_unsigned(unsigned_num, 16, 0, &state);
+                break;
+            }
+            case 'X':
+            {
+                unsigned_num = va_arg(args, unsigned int);
+                handle_unsigned(unsigned_num, 16, 1, &state);
+                break;
+            }
+            case '%':
+            {
+                add_to_buffer('%', &state);
+                break;
+            }
+            default:
+            {
+                add_to_buffer('%', &state);
+                add_to_buffer(*format, &state);
+                break;
+            }
+            }
+            // format++;
         }
         else
         {
-            write(1, format, 1);
-            count++;
+            add_to_buffer(*format, &state);
         }
         format++;
     }
 
+    flush_buffer(&state);
     va_end(args);
-    return count;
+    return state.total;
 }
 
-// Temporary main for testing
 int main(void)
 {
     _printf("Chars: %c %c\n", 'X', 'Y');
